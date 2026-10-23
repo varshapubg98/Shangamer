@@ -33,23 +33,21 @@ jobs:
             fi
           done
 
-      - name: Auto-Fix Deprecated Repositories
+      - name: Auto-Fix Repositories
         run: |
-          # Replace dead jcenter with mavenCentral and google
           find . -name "*.gradle" -o -name "*.gradle.kts" | while read -r file; do
             sed -i 's/jcenter()/mavenCentral()/g' "$file"
           done
 
-      - name: Build Android APK
+      - name: Build Android Project
         run: |
-          # Find gradlew or build.gradle
           GRADLEW_PATH=$(find . -name "gradlew" -type f | head -n 1)
           
           if [ -n "$GRADLEW_PATH" ]; then
             PROJECT_DIR=$(dirname "$GRADLEW_PATH")
             cd "$PROJECT_DIR"
             chmod +x gradlew
-            BUILD_CMD="./gradlew assembleDebug --no-daemon"
+            ./gradlew assemble --no-daemon
           else
             BUILD_GRADLE=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
             PROJECT_DIR=$(dirname "$BUILD_GRADLE")
@@ -58,22 +56,17 @@ jobs:
             wget -q https://services.gradle.org/distributions/gradle-7.5.1-bin.zip
             unzip -q -o gradle-7.5.1-bin.zip
             export PATH=$PWD/gradle-7.5.1/bin:$PATH
-            BUILD_CMD="gradle assembleDebug --no-daemon"
+            gradle assemble --no-daemon
           fi
 
-          echo "Running build in: $PROJECT_DIR"
-          
-          # Run build and capture error if any
-          if ! $BUILD_CMD 2>&1 | tee build_output.log; then
-            echo "================ ERROR SUMMARY ================"
-            grep -A 10 "\* What went wrong:" build_output.log || tail -n 30 build_output.log
-            exit 1
-          fi
+          echo "=== SEARCHING ALL GENERATED FILES ==="
+          mkdir -p $GITHUB_WORKSPACE/output_files
+          find . -type f \( -name "*.apk" -o -name "*.aar" -o -name "*.aab" \) -exec cp {} $GITHUB_WORKSPACE/output_files/ \;
+          ls -la $GITHUB_WORKSPACE/output_files/
 
-      - name: Upload APK Artifact
+      - name: Upload Output Files (APK / AAR)
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: app-debug-apk
-          path: '**/*.apk'
+          name: Shangamer-Outputs
+          path: output_files/
           if-no-files-found: warn
