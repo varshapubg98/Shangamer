@@ -1,0 +1,46 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Unzip Android project
+        shell: bash
+        run: |
+          if [ -f "Shangamer-UnityAds-Android-Project.zip" ]; then
+            mkdir -p android-project
+            unzip -q "Shangamer-UnityAds-Android-Project.zip" -d android-project
+          else
+            echo "ZIP file not found. Skipping unzip."
+          fi
+
+      - name: Build Android project if Gradle exists
+        shell: bash
+        run: |
+          set -e
+          GRADLEW=$(find . -name gradlew -type f | head -n 1 || true)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "No Gradle wrapper found. Skipping build."
+            exit 0
+          fi
+
+          DIR=$(dirname "$GRADLEW")
+          cd "$DIR"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
