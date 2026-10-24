@@ -1,0 +1,57 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK from Zip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # AGP 8.4 ke liye Java 17 zaroori hai
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Unzip Project
+        run: |
+          for f in *.zip; do
+            if [ -f "$f" ]; then
+              echo "Extracting $f"
+              unzip -o "$f"
+            fi
+          done
+
+      # Exact Gradle 8.6 set karein jo aapka project maang raha hai
+      - name: Update Gradle to 8.6
+        run: |
+          find . -name "gradle-wrapper.properties" | while read -r prop; do
+            echo "Updating $prop to Gradle 8.6"
+            sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.6-bin.zip|' "$prop"
+          done
+
+      - name: Build Android APK
+        run: |
+          GRADLEW_PATH=$(find . -name "gradlew" -type f | head -n 1)
+          PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+          cd "$PROJECT_DIR"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shangamer-APK
+          path: '**/build/outputs/apk/debug/*.apk'
