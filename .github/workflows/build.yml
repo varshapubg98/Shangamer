@@ -1,0 +1,111 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Allows manual trigger from GitHub Actions button
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 1: Automatically extract the zip file
+      - name: Extract Project ZIP
+        run: |
+          echo "=== Checking repository contents ==="
+          ls -la
+          
+          # Check for specific or any zip file
+          if [ -f "Shangamer-UnityAds-Android-Project.zip" ]; then
+            echo "Extracting Shangamer-UnityAds-Android-Project.zip..."
+            unzip -o "Shangamer-UnityAds-Android-Project.zip"
+          elif ls *.zip 1> /dev/null 2>&1; then
+            echo "Extracting found zip files..."
+            unzip -o "*.zip"
+          else
+            echo "No zip file found, assuming project is unzipped in repo."
+          fi
+
+          echo "=== Directory contents after extraction ==="
+          ls -la
+
+      # Step 2: Locate where gradlew / build.gradle is located
+      - name: Detect Android Project Root
+        run: |
+          echo "=== Searching for Android project root ==="
+          # Search for gradlew or build.gradle
+          GRADLEW_FILE=$(find . -name "gradlew" -not -path "*/.*" | head -n 1)
+          
+          if [ -n "$GRADLEW_FILE" ]; then
+            PROJECT_DIR=$(dirname "$GRADLEW_FILE")
+            echo "Found gradlew in: $PROJECT_DIR"
+            echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          else
+            BUILD_GRADLE=$(find . -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+            if [ -n "$BUILD_GRADLE" ]; then
+              PROJECT_DIR=$(dirname "$BUILD_GRADLE")
+              echo "Found build.gradle in: $PROJECT_DIR"
+              echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+            else
+              echo "PROJECT_DIR=." >> $GITHUB_ENV
+            fi
+          fi
+
+      # Step 3: Set up Java Development Kit
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      # Step 4: Set up Android SDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Step 5: Grant execute permission for gradlew
+      - name: Grant execute permission for gradlew
+        run: |
+          cd "$PROJECT_DIR"
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          else
+            echo "Generating gradle wrapper..."
+            gradle wrapper || echo "gradle wrapper creation skipped"
+            chmod +x ./gradlew 2>/dev/null || true
+          fi
+
+      # Step 6: Build Android APK
+      - name: Build Android APK (Debug)
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      # Step 7: Locate APK and organize in output directory
+      - name: Prepare APK for Artifacts
+        run: |
+          mkdir -p output_apk
+          echo "=== Searching generated APK files ==="
+          find . -name "*.apk" | while read -r apk_path; do
+            echo "Found APK: $apk_path"
+            cp "$apk_path" output_apk/
+          done
+          
+          echo "=== Collected APKs ==="
+          ls -lh output_apk/
+
+      # Step 8: Upload APK to GitHub Artifacts for direct download
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shangamer-debug-apk
+          path: output_apk/*.apk
+          retention-days: 30
+          
